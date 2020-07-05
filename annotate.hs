@@ -15,9 +15,12 @@ import System.Environment (getArgs)
 --------------------------------------------------------------------------------
 -- Img
 
-data Img = Img (P.Image P.PixelRGBA8) Int
+type Scale = Int
+type Coord = (Int, Int)
+type Size = (Int, Int)
+data Img = Img (P.Image P.PixelRGBA8) Scale
 
-imgLoad :: FilePath -> Int -> IO Img
+imgLoad :: FilePath -> Scale -> IO Img
 imgLoad path scale = (\img -> Img img scale) <$> P8.readImageRGBA8 path
 
 imgWidth :: Img -> Int
@@ -26,7 +29,7 @@ imgWidth (Img img scale) = P.imageWidth img `div` scale
 imgHeight :: Img -> Int
 imgHeight (Img img scale) = P.imageHeight img `div` scale
 
-imgPixel :: Img -> (Int, Int) -> Bool
+imgPixel :: Img -> Coord -> Bool
 imgPixel (Img img scale) (x, y) =
   if x' < 0 || y' < 0 || x' >= P.imageWidth img || y' >= P.imageHeight img
   then False
@@ -43,46 +46,68 @@ imgDump img xs ys = unlines $ map showLine ys
 imgDumpFull :: Img -> String
 imgDumpFull img = imgDump img [0..imgWidth img - 1] [0..imgHeight img - 1]
 
-imgAllPixels :: Img -> [(Int,Int)]
+imgAllPixels :: Img -> [Coord]
 imgAllPixels img = [(x, y) | x <- [0..imgWidth img - 1], y <- [0..imgHeight img - 1]]
 
 --------------------------------------------------------------------------------
 
-decodeNumber :: Img -> (Int, Int) -> Maybe (Int, (Int, Int))
+
+decodeNumber :: Img -> Coord -> Maybe (Integer, Size)
 decodeNumber img (x, y) = do
-  -- Helper functions
+  {-
+    Figure:
+       . . _ _ _ _ ,
+       . : # # # # ,   → x
+       _ # + + + + -
+       _ # + + + + -
+       _ # + + + + -
+       _ # + + + + -
+       , ? - - - - -
+
+         ↓
+         y
+
+     Legend:
+       . : _ , - — black pixels
+       #         — white pixels
+       ?         — negativity bit
+       +         — binary data
+       :         — point (x, y)
+  -}
+
   let px = imgPixel img
+
+  -- 1. Check that 2x2 top left corner is empty (`.` and `:`)
+  assertMay $ not $ any px [(x-1, y-1), (x, y-1), (x-1, y), (x,y)]
+
+  -- 2. Calculate the size based on top and left edges (`.` and `#`)
   let topLeft' i = (px (x + i, y - 1),
                     px (x + i, y),
                     px (x - 1, y + i),
                     px (x,     y + i))
   let topLeft = takeWhile (\i -> (False, True, False, True) == topLeft' i) $ [1..]
-  
-  -- check that 2x2 top left corner is empty
-  assertMay $ not $ any px [(x-1, y-1), (x, y-1), (x-1, y), (x,y)]
-
-  -- calculate the size based on top and right edges
   size <- lastMay topLeft
   assertMay $ size >= 1
 
+  -- 3. Check the negativity bit (`?`) and empty space at corners (`,`)
   negative <-
     case topLeft' (size+1) of
       (False, False, False, False) -> Just False
       (False, False, False, True) -> Just True
       otherwise -> Nothing
 
-  -- Check that right and bottom edges are empty
+  -- 4. Check that right and bottom edges are empty (`-` on the fig)
   assertMay $ not $
     any (\i -> px (x + size + 1, y+i) || px(x+i, y + size + 1)) [1 .. size+1]
 
-  let number = bitsToInt [px (ix,iy) | iy <- [y+1 .. y+size], ix <- [x+1 .. x+size]]
+  let number = bitsToInteger [px (ix,iy) | iy <- [y+1 .. y+size], ix <- [x+1 .. x+size]]
 
   Just $ if negative
     then (-number, (size, size+1))
     else (number, (size, size))
 
-bitsToInt :: [Bool] -> Int
-bitsToInt = fst . foldl' f (0, 1)
+bitsToInteger :: [Bool] -> Integer
+bitsToInteger = fst . foldl' f (0, 1)
   where
     f (sum, bit) True = (sum + bit, bit*2)
     f (sum, bit) False = (sum, bit*2)
