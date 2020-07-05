@@ -1,6 +1,6 @@
 #! /usr/bin/env nix-shell
-#! nix-shell -i runhaskell
-#! nix-shell -p "haskellPackages.ghcWithPackages (pkgs: with pkgs; [JuicyPixels JuicyPixels-util errors])"
+#! nix-shell -i runhaskell -p
+#! nix-shell "haskellPackages.ghcWithPackages (pkgs: with pkgs; [JuicyPixels JuicyPixels-util errors])"
 
 import qualified Codec.Picture as P
 import qualified Codec.Picture.RGBA8 as P8
@@ -50,7 +50,7 @@ imgAllPixels :: Img -> [Coord]
 imgAllPixels img = [(x, y) | x <- [0..imgWidth img - 1], y <- [0..imgHeight img - 1]]
 
 --------------------------------------------------------------------------------
-
+-- Number decoder
 
 decodeNumber :: Img -> Coord -> Maybe (Integer, Size)
 decodeNumber img (x, y) = do
@@ -81,10 +81,8 @@ decodeNumber img (x, y) = do
   assertMay $ not $ any px [(x-1, y-1), (x, y-1), (x-1, y), (x,y)]
 
   -- 2. Calculate the size based on top and left edges (`.` and `#`)
-  let topLeft' i = (px (x + i, y - 1),
-                    px (x + i, y),
-                    px (x - 1, y + i),
-                    px (x,     y + i))
+  let topLeft' i = (px (x + i, y - 1), px (x + i, y),
+                    px (x - 1, y + i), px (x,     y + i))
   let topLeft = takeWhile (\i -> (False, True, False, True) == topLeft' i) $ [1..]
   size <- lastMay topLeft
   assertMay $ size >= 1
@@ -96,10 +94,11 @@ decodeNumber img (x, y) = do
       (False, False, False, True) -> Just True
       otherwise -> Nothing
 
-  -- 4. Check that right and bottom edges are empty (`-` on the fig)
+  -- 4. Check that right and bottom edges are empty (`-`)
   assertMay $ not $
     any (\i -> px (x + size + 1, y+i) || px(x+i, y + size + 1)) [1 .. size+1]
 
+  -- 5. Decode binary data
   let number = bitsToInteger [px (ix,iy) | iy <- [y+1 .. y+size], ix <- [x+1 .. x+size]]
 
   Just $ if negative
