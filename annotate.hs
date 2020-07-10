@@ -202,6 +202,14 @@ decodeAnnotate img coord@(x,y) = num <|> symEllipsis'
     showOperator 401 = "dec"
     showOperator 417 = "inc"
     showOperator 365 = "add"
+
+    -- TODO: proper way of detecting of variables
+    showOperator 501 = "x0"
+    showOperator 485 = "x1"
+    showOperator 65193 = "x2"
+    showOperator 65161 = "x3"
+    showOperator 64745 = "x4"
+
     showOperator n = ":" ++ show n
 
     symEllipsis' = do
