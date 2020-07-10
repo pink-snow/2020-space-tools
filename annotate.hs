@@ -6,7 +6,7 @@
 
 import Control.Monad (forM, forM_)
 import Control.Monad.ST (runST)
-import Data.List (foldl', intercalate)
+import Data.List (foldl', intercalate, sortOn)
 import Data.List.Extra (groupOn)
 import Data.List.GroupBy (groupBy)
 import Data.Maybe (catMaybes)
@@ -46,6 +46,17 @@ bitsToInteger = fst . foldl' f (0, 1)
   where
     f (sum, bit) True = (sum + bit, bit*2)
     f (sum, bit) False = (sum, bit*2)
+
+groupAcc :: (a -> s) -> (s -> a -> Maybe s) -> [a] -> [(s, [a])]
+groupAcc init f = groupAcc1'
+  where
+    groupAcc1' [] = []
+    groupAcc1' (x:xs) = takeGroup (init x) [x] xs
+
+    takeGroup state group [] = [(state, reverse group)]
+    takeGroup state group (y:ys) = case f state y of
+      Nothing -> (state, reverse group) : groupAcc1' (y:ys)
+      Just state' -> takeGroup state' (y : group) ys
 
 --------------------------------------------------------------------------------
 -- Img
@@ -234,12 +245,26 @@ decodeImg img = id
     $ map (map (intercalate " ")) -- join items inside each group
     $ map (map (map (\(_,_,text,_) -> text)))
     $ map (groupBy (\a b -> xRight a >= xLeft b - 2)) -- split by horisontal groups
-    $ groupOn (\((_,y),_,_,_) -> y) -- split by lines
+    $ splitByLines
     $ map (symRepr' img)
     $ symDetectAll img
   where
     xLeft ((x,_),(_,_),_,_) = x
     xRight ((x,_),(w,_),_,_) = x + w
+
+splitByLines :: [(Coord, Size, a, b)] -> [[(Coord, Size, a, b)]]
+splitByLines = id
+  . map (sortOn (\((x,_),_,_,_) -> x))
+  . map concat
+  . map (map snd . snd) -- drop accumulators from both groupAcc's
+  . groupAcc fst (\s x -> addRanges s (fst x))
+  . groupAcc yRange (\s x -> addRanges s (yRange x))
+  where
+    yRange ((_,y),(_,h),_,_) = (y, y+h)
+    addRanges a@(a0, a1) b@(b0, b1)
+      | b0 <= a0 && a0 <= b1 = Just (b0, max a1 b1)
+      | a0 <= b0 && b0 <= a1 = Just (a0, max a1 b1)
+      | otherwise = Nothing
 
 symRepr :: Symbol -> (String, String)
 symRepr SymUnknown = ("?", "gray")
