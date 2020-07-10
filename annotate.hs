@@ -56,6 +56,9 @@ instance Show Img where
 imgAllPixels :: Img -> [Coord]
 imgAllPixels img = [(x, y) | y <- [0..imgHeight img - 1], x <- [0..imgWidth img - 1]]
 
+imgInnerPixels :: Img -> [Coord]
+imgInnerPixels img = [(x, y) | y <- [1..imgHeight img - 2], x <- [1..imgWidth img - 2]]
+
 --------------------------------------------------------------------------------
 -- Number decoder
 
@@ -206,9 +209,11 @@ decodeAnnotate img coord@(x,y) = num <|> symEllipsis'
       Just ((x+1, y+1), (7, 1), "...", "gray")
 
 annotateImg :: Img -> String
-annotateImg img = svg img annotations
-  where
-    annotations = catMaybes $ map (decodeAnnotate img) $ imgAllPixels img
+annotateImg img = id
+  $ svg img
+  $ catMaybes
+  $ map (decodeAnnotate img)
+  $ imgInnerPixels img
 
 decodeImg :: Img -> String
 decodeImg img = id
@@ -220,7 +225,7 @@ decodeImg img = id
     $ groupOn (\((_,y),_,_,_) -> y) -- split by lines
     $ catMaybes
     $ map (decodeAnnotate img)
-    $ imgAllPixels img
+    $ imgInnerPixels img
   where
     xLeft ((x,_),(_,_),_,_) = x
     xRight ((x,_),(w,_),_,_) = x + w
