@@ -271,8 +271,18 @@ symRepr (SymNumber val) = (show val, "green")
 symRepr (SymOperator val) = (text, "yellow")
   where
     text = fromMaybe (':' : show val) $ lookup val ops
-    ops = [ (0, "ap"), (12, "=")
-          , (146, "mul"), (365, "add"), (401, "dec"), (417, "inc")
+    ops = [ (0, "ap")
+          , (12, "=")
+          -- constants
+          , (2, "t")
+          , (8, "f")
+          -- binary operators
+          , (40, "div")
+          , (146, "mul")
+          , (365, "add")
+          , (401, "dec")
+          , (417, "inc")
+          , (448, "eq")
           ]
 symRepr (SymVariable val) = ('x' : show val, "blue")
 
