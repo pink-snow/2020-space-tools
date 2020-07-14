@@ -10,7 +10,7 @@ import Control.Monad (forM, forM_, guard)
 import Control.Monad.ST (runST)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe (runMaybeT)
-import Data.List (foldl', intercalate, sortOn)
+import Data.List (foldl', intercalate, sortOn, find)
 import Data.List.GroupBy (groupBy)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Word (Word16)
@@ -32,6 +32,7 @@ data Symbol
   = SymNumber Integer
   | SymOperator Integer
   | SymVariable Integer
+  | SymSomething Integer
   | SymEllipsis
   | SymUnknown
 
@@ -64,8 +65,14 @@ groupAcc init f = groupAcc1'
 --------------------------------------------------------------------------------
 -- Img
 
-imgLoad :: FilePath -> Scale -> IO Img
-imgLoad path scale = (\img -> Img img scale) <$> P8.readImageRGBA8 path
+imgLoad :: FilePath -> IO Img
+imgLoad path = do
+  img <- P8.readImageRGBA8 path
+  let scale = case map (\i -> imgPixelUnscaled img i i) [0..] of
+                True:False:_ -> 1
+                True:True:True:True:False:False:False:False:_ -> 4
+                _ -> error "Unexpected image scale"
+  return (Img img scale)
 
 imgWidth :: Img -> Int
 imgWidth (Img img scale) = P.imageWidth img `div` scale
@@ -74,13 +81,14 @@ imgHeight :: Img -> Int
 imgHeight (Img img scale) = P.imageHeight img `div` scale
 
 imgPixel :: Img -> Coord -> Bool
-imgPixel (Img img scale) (x, y) = True
-  && x' >= 0 && y' >= 0
-  && x' < P.imageWidth img && y' < P.imageHeight img
+imgPixel (Img img scale) (x, y) = imgPixelUnscaled img (x * scale) (y * scale)
+
+imgPixelUnscaled :: (P.Image P.PixelRGBA8) -> Int -> Int -> Bool
+imgPixelUnscaled img x y = True
+  && x >= 0 && y >= 0
+  && x < P.imageWidth img && y < P.imageHeight img
   && fromIntegral r + fromIntegral g + fromIntegral b > (0::Word16)
-  where
-    (x', y') = (x * scale, y * scale)
-    P.PixelRGBA8 r g b _ = P.pixelAt img x' y'
+  where P.PixelRGBA8 r g b _ = P.pixelAt img x y
 
 imgShow :: Img -> [Int] -> [Int] -> String
 imgShow img xs ys = unlines $ map showLine ys
@@ -102,6 +110,7 @@ symDecode :: Img -> Coord -> Size -> Symbol
 symDecode img (x, y) (w, h)
   | isNonNegativeNumber = SymNumber value
   | isNegativeNumber = SymNumber (-value)
+  | isSomething = SymSomething somethingValue
   | isVariable = SymVariable varValue
   | isOperator = SymOperator value
   | isEllipsis = SymEllipsis
@@ -133,11 +142,18 @@ symDecode img (x, y) (w, h)
       && none px [(x', 1) | x' <- [2 .. size-2]] -- top + 1 is empty
       && none px [(1, y') | y' <- [2 .. size-2]] -- left + 1 is empty
 
+    isSomething = True
+      && w == h
+      && px (0, 0)
+      && not (px (1, 0))
+
     isEllipsis = checkSymbol img symEllipsis (x-1, y-1)
 
     value = bitsToInteger $ map px $ range2d 1 1 (size-1) (size-1)
 
     varValue = bitsToInteger $ map (not . px) $ range2d 2 2 (size-2) (size-2)
+
+    somethingValue = bitsToInteger $ map px $ range2d 0 0 (size-1) (size-1)
 
 symDetectAll :: Img -> [(Coord, Size)]
 symDetectAll img = runST $ do
@@ -145,22 +161,43 @@ symDetectAll img = runST $ do
   fmap catMaybes $ forM validRange $ \(x, y) -> runMaybeT $ do
     guard =<< not <$> V.read vec (idx (x, y))
     (w, h) <- justZ $ symDetectSingle img (x, y)
-    lift $ forM_ (range2d x y (x+w-1) (y+h-1)) $ flip (V.write vec) True . idx
+    lift $ forM_ (range2d x y (x+w-1) (y+h-1)) $ write vec
     return ((x, y), (w, h))
   where
     (width, height) = (imgWidth &&& imgHeight) img
     validRange = range2d 2 2 (width - 3) (height - 3)
     idx (x, y) = x + y * width
+    write vec (x, y)
+      | x >= width || y >= height = return ()
+      | otherwise = V.write vec (idx (x, y)) True >> return ()
 
 symDetectSingle :: Img -> Coord -> Maybe Size
 symDetectSingle img (x, y)
-  | px 1 0 && px 0 1 = Just (width + 1, height + 1)
+  | ok1 = Just (width, height)
+  | ok2 = Just (ok2Size, ok2Size)
   | checkSymbol img symEllipsis (x-1, y-1) = Just (7, 1)
   | otherwise = Nothing
   where
     px x' y' = imgPixel img (x + x', y + y')
-    width = length $ takeWhile (flip px 0) [1 ..]
-    height = length $ takeWhile (px 0) [1 ..]
+    width = (+1) $ length $ takeWhile (flip px 0) [1 ..]
+    height = (+1) $ length $ takeWhile (px 0) [1 ..]
+
+    noBorders w h = True
+      && none (\y -> px w y || px (-1) y) [0..h-1]
+      && none (\x -> px x h || px x (-1)) [0..w-1]
+
+    ok1 = px 1 0 && px 0 1 && noBorders width height
+      && (width > 2 || px 1 1)
+
+    ok2Have i = any (px i) [0..i] || any (flip px i) [0..i]
+    ok2Size = length $ takeWhile ok2Have [0..]
+    ok2 = px 0 0 && px 1 1 && not (px 0 1) && not (px 1 0)
+      && ok2Size <= 4
+      && ok2Size > 2
+      && x + ok2Size < imgWidth img
+      && y + ok2Size < imgHeight img
+      && none (px (-1)) [0..ok2Size-1]
+      && none (flip px (-1)) [0..ok2Size-1]
 
 symEllipsis :: [[Bool]]
 symEllipsis = map (map (=='#'))
@@ -213,19 +250,31 @@ svgImgPoints img =
   concatMap (\coord -> svgPoint coord (imgPixel img coord)) $ imgAllPixels img
 
 svgAnnotation :: Coord -> Size -> String -> String -> [String]
-svgAnnotation (x, y) (w, h) text color = [
-    "<rect x='", show (1 + x*8 - 6),
-    "' y='", show (1 + y*8 - 6),
-    "' width='", show (w*8 + 11),
-    "' height='", show (h*8 + 11),
-    "' style='fill:", color, ";opacity:0.5'/>\n",
+svgAnnotation (x, y) (w, h) text color =
+  case words text of
+    [text1] -> svgAnnotation2 (x, y) (w, h) text1 "" color
+    text1:rest -> svgAnnotation2 (x, y) (w, h) text1 (unwords rest) color
 
-    "<text x='", show (1 + x*8 + w*4),
-    "' y='", show (1 + y*8 + h*4),
-    "' dominant-baseline='middle' text-anchor='middle' fill='white' style='",
-    "paint-order: stroke; fill: white; stroke: black; stroke-width: 2px; font:24px bold sans;",
-    "'>", text, "</text>\n"
-  ]
+
+svgAnnotation2 :: Coord -> Size -> String -> String -> String -> [String]
+svgAnnotation2 (x, y) (w, h) text1 text2 color = [
+    "<rect x='", show (1 + x*8 - 2),
+    "' y='", show (1 + y*8 - 2),
+    "' width='", show (w*8 + 3),
+    "' height='", show (h*8 + 3),
+    "' style='fill:", color, ";opacity:0.5'/>\n"]
+    ++ if text2 == ""
+         then putText text1 0
+         else putText text1 (-4) ++ putText text2 8
+  where
+    putText t yShift = [
+      "<text x='", show (1 + x*8 + w*4),
+      "' y='", show (1 + y*8 + h*4 + yShift),
+      "' dominant-baseline='middle' text-anchor='middle' fill='white' style='",
+      "paint-order: stroke; fill: white; stroke: black; stroke-width: 2px; font:",
+      show $ (w * 15) `div` (length t)
+      ,"px bold sans;",
+      "'>", t, "</text>\n" ]
 
 --------------------------------------------------------------------------------
 -- Main
@@ -267,7 +316,10 @@ splitByLines = id
 symRepr :: Symbol -> (String, String)
 symRepr SymUnknown = ("?", "gray")
 symRepr SymEllipsis = ("...", "gray")
-symRepr (SymNumber val) = (show val, "green")
+-- symRepr (SymNumber val) = (show val, "green")
+symRepr (SymNumber val) = (text, "green")
+  where
+    text = fromMaybe (show val) $ lookup val elementIdentifiers
 symRepr (SymOperator val) = (text, "yellow")
   where
     text = fromMaybe (':' : show val) $ lookup val ops
@@ -283,8 +335,15 @@ symRepr (SymOperator val) = (text, "yellow")
           , (401, "dec")
           , (417, "inc")
           , (448, "eq")
-          ]
+          -- pflockingen
+          ] ++ map (\(a,b,c) -> (a, b ++ " " ++ c)) moleculeIdentifiers
 symRepr (SymVariable val) = ('x' : show val, "blue")
+symRepr (SymSomething 7077) = ("Amino acid", "red")
+symRepr (SymSomething 20193) = ("A", "red")
+symRepr (SymSomething 20461) = ("A0", "red")
+symRepr (SymSomething 44769) = ("B", "red")
+symRepr (SymSomething 45037) = ("B0", "red")
+symRepr (SymSomething val) = (show val, "red")
 
 symRepr' :: Img -> (Coord, Size) -> (Coord, Size, String, String)
 symRepr' img (coord, size) =
@@ -294,6 +353,61 @@ symRepr' img (coord, size) =
 main :: IO ()
 main = do
   [fnameIn, fnameSvg, fnameTxt] <- getArgs
-  img <- imgLoad fnameIn 4
+  img <- imgLoad fnameIn
   writeFile fnameSvg $ annotateImg img
   writeFile fnameTxt $ decodeImg img
+
+
+tr :: Eq a => [a] -> [a] -> [a] -> [a]
+tr from to = map tr'
+  where
+    table = zip from to
+    tr' s = fromMaybe s (snd <$> find (\(f, _) -> s == f) table)
+
+elementIdentifiers =
+  [ ( 1, "H")
+  , ( 2, "He")
+  , ( 6, "C")
+  , ( 7, "N")
+  , ( 8, "O")
+  , (11, "Na")
+  , (12, "Mg")
+  , (13, "Al")
+  , (14, "Si")
+  , (17, "Cl")
+  , (26, "Fe")
+  ]
+
+moleculeIdentifiers =
+  map (\(a, b, c) -> (a, tr ['0'..'9'] ['₀'..'₉'] b, c))
+  [ (  9, "C3H5O2",   "2-carboxyethyl")
+  , ( 16, "CH4",      "methane")
+  , ( 17, "NH3",      "ammonia")
+  , ( 18, "H2O",      "water")
+  , ( 20, "C2H6N",    "1-aminoethyl")
+  , ( 28, "CC",       "triple bond")
+  , ( 29, "CH2-CH3",  "ethyl")
+  , ( 30, "CH2-NH2",  "1-amine-")
+  , ( 31, "CH2-OH",   "hydroxymethyl")
+  , ( 32, "OO",       "double bond")
+  , ( 44, "C2H5O",    "1-hydroxyethyl")
+  , ( 45, "C2H5O",    "2-hydroxyethyl")
+  , ( 46, "SiO2",     "silicon dioxide")
+  , ( 48, "O3",       "ozone")
+  , ( 56, "C2H2NO",   "glycyl radical residue")
+  , ( 58, "C2H4NO",   "2-amino-2-oxoethyl")
+  , ( 59, "C2H3O2",   "carboxymethyl")
+  , ( 72, "C3H6NO",   "3-amino-3-oxopropyl")
+  , ( 74, "Al2O3",    "")
+  , ( 82, "AlO3",     "aluminium oxide")
+  , ( 84, "C4H9",     "isobutyl")
+  , ( 85, "NNaO3",    "sodium nitrate")
+  , ( 86, "C3H8N3",   "unknown")
+  , ( 87, "C4H7O2",   "butanoic acid")
+  , ( 95, "MgCl2",    "magnesium dichloride")
+  , (100, "C4H10N3",  "3-carbamimidamidopropyl")
+  , (104, "Fe2O3",    "ferric oxide")
+  , (118, "C7H7",     "benzyl group")
+  , (134, "C7H7O",    "4-hydroxybenzyl")
+  , (328, "FeO",      "ferrous oxide")
+  ]
