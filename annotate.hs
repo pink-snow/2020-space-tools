@@ -6,7 +6,7 @@
 
 import Control.Arrow ((&&&))
 import Control.Error.Safe (justZ)
-import Control.Monad (forM, forM_, guard)
+import Control.Monad (forM, forM_, guard, when)
 import Control.Monad.ST (runST)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe (runMaybeT)
@@ -15,6 +15,7 @@ import Data.List.GroupBy (groupBy)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Word (Word16)
 import System.Environment (getArgs)
+import Data.STRef
 import qualified Codec.Picture as P
 import qualified Codec.Picture.RGBA8 as P8
 import qualified Data.Vector.Mutable as V
@@ -27,7 +28,10 @@ type Scale = Int
 type Coord = (Int, Int)
 type Size = (Int, Int)
 
-data Img = Img (Vi.Vector Bool) Size
+data Img = Img
+  { imgVec :: Vi.Vector Bool
+  , imgSize :: Size
+  }
 
 data Symbol
   = SymNumber Integer
@@ -151,6 +155,38 @@ symDecode img (x, y) (w, h)
     varValue = bitsToInteger $ map (not . px) $ range2d 2 2 (size-2) (size-2)
 
     somethingValue = bitsToInteger $ map px $ range2d 0 0 (size-1) (size-1)
+
+symFloodFill :: Img -> Coord -> Img
+symFloodFill img (sx, sy)
+  | not $ imgPixel img (sx, sy) = img
+  | otherwise = runST $ do
+    vec <- Vi.thaw (imgVec img)
+    bounds <- newSTRef (sx, sy, sx, sy)
+    let
+      put x y
+        | x < 0 || y < 0 || x >= imgWidth img || y >= imgHeight img = return ()
+        | otherwise = do
+          v <- V.read vec (x + y * (imgWidth img))
+          when v $ do
+            V.write vec (x + y * (imgWidth img)) False
+            modifySTRef' bounds $ \(x0, y0, x1, y1) ->
+              (min x0 x, min y0 y, max x1 x, max y1 y)
+            put (x-1) (y-1); put (x  ) (y-1); put (x+1) (y-1)
+            put (x-1) (y  );                  put (x+1) (y  )
+            put (x-1) (y+1); put (x  ) (y+1); put (x+1) (y+1)
+    put sx sy
+    (x0, y0, x1, y1) <- readSTRef bounds
+
+    if max (x1 - x0 + 1) (y1 - y0 + 1) >= 6 || (x0 == x1 && y0 == y1)
+    then do
+      vec' <- Vi.freeze vec
+      return $ img { imgVec = vec' }
+    else
+      return $ img
+
+symRemoveGarbage :: Img -> Img
+symRemoveGarbage img =
+  foldl symFloodFill img (imgAllPixels img)
 
 symDetectAll :: Img -> [(Coord, Size)]
 symDetectAll img = runST $ do
@@ -278,8 +314,9 @@ svgAnnotation2 (x, y) (w, h) text1 text2 color = [
 annotateImg :: Img -> String
 annotateImg img = id
   $ svg img
-  $ map (symRepr' img)
-  $ symDetectAll img
+  $ map (symRepr' img')
+  $ symDetectAll img'
+  where img' = symRemoveGarbage img
 
 decodeImg :: Img -> String
 decodeImg img = id
@@ -289,11 +326,12 @@ decodeImg img = id
     $ map (map (map (\(_, _, text, _) -> text)))
     $ map (groupBy (\a b -> xRight a >= xLeft b - 2)) -- split by horisontal groups
     $ splitByLines
-    $ map (symRepr' img)
-    $ symDetectAll img
+    $ map (symRepr' img')
+    $ symDetectAll img'
   where
     xLeft ((x, _), _, _, _) = x
     xRight ((x, _), (w, _), _, _) = x + w
+    img' = symRemoveGarbage img
 
 splitByLines :: [(Coord, Size, a, b)] -> [[(Coord, Size, a, b)]]
 splitByLines = id
@@ -311,7 +349,6 @@ splitByLines = id
 
 symRepr :: Symbol -> (String, String)
 symRepr SymUnknown = ("?", "gray")
--- symRepr (SymNumber val) = (show val, "green")
 symRepr (SymNumber val) = (text, "green")
   where
     text = fromMaybe (show val) $ lookup val elementIdentifiers
