@@ -33,7 +33,6 @@ data Symbol
   | SymOperator Integer
   | SymVariable Integer
   | SymSomething Integer
-  | SymEllipsis
   | SymUnknown
 
 --------------------------------------------------------------------------------
@@ -113,7 +112,6 @@ symDecode img (x, y) (w, h)
   | isSomething = SymSomething somethingValue
   | isVariable = SymVariable varValue
   | isOperator = SymOperator value
-  | isEllipsis = SymEllipsis
   | otherwise = SymUnknown
   where
     size = w
@@ -147,8 +145,6 @@ symDecode img (x, y) (w, h)
       && px (0, 0)
       && not (px (1, 0))
 
-    isEllipsis = checkSymbol img symEllipsis (x-1, y-1)
-
     value = bitsToInteger $ map px $ range2d 1 1 (size-1) (size-1)
 
     varValue = bitsToInteger $ map (not . px) $ range2d 2 2 (size-2) (size-2)
@@ -175,7 +171,6 @@ symDetectSingle :: Img -> Coord -> Maybe Size
 symDetectSingle img (x, y)
   | ok1 = Just (width, height)
   | ok2 = Just (ok2Size, ok2Size)
-  | checkSymbol img symEllipsis (x-1, y-1) = Just (7, 1)
   | otherwise = Nothing
   where
     px x' y' = imgPixel img (x + x', y + y')
@@ -315,7 +310,6 @@ splitByLines = id
 
 symRepr :: Symbol -> (String, String)
 symRepr SymUnknown = ("?", "gray")
-symRepr SymEllipsis = ("...", "gray")
 -- symRepr (SymNumber val) = (show val, "green")
 symRepr (SymNumber val) = (text, "green")
   where
@@ -338,11 +332,25 @@ symRepr (SymOperator val) = (text, "yellow")
           -- pflockingen
           ] ++ map (\(a,b,c) -> (a, b ++ " " ++ c)) moleculeIdentifiers
 symRepr (SymVariable val) = ('x' : show val, "blue")
+
+symRepr (SymSomething 341) = ("H-Bond", "red")
 symRepr (SymSomething 7077) = ("Amino acid", "red")
+
+symRepr (SymSomething 49953) = ("²H Deuterium", "red")
+symRepr (SymSomething 50145) = ("³H Tritium", "red")
+
 symRepr (SymSomething 20193) = ("A", "red")
 symRepr (SymSomething 20461) = ("A0", "red")
+symRepr (SymSomething 17641) = ("A1", "red")
+symRepr (SymSomething 58593) = ("A2", "red")
+
 symRepr (SymSomething 44769) = ("B", "red")
 symRepr (SymSomething 45037) = ("B0", "red")
+symRepr (SymSomething 43753) = ("B1", "red")
+symRepr (SymSomething 60129) = ("B2", "red")
+
+symRepr (SymSomething 61153) = ("○ Planet", "red")
+
 symRepr (SymSomething val) = (show val, "red")
 
 symRepr' :: Img -> (Coord, Size) -> (Coord, Size, String, String)
@@ -367,6 +375,9 @@ tr from to = map tr'
 elementIdentifiers =
   [ ( 1, "H")
   , ( 2, "He")
+  , ( 3, "Li")
+  , ( 4, "Be")
+  , ( 5, "B")
   , ( 6, "C")
   , ( 7, "N")
   , ( 8, "O")
@@ -389,7 +400,7 @@ moleculeIdentifiers =
   , ( 29, "CH2-CH3",  "ethyl")
   , ( 30, "CH2-NH2",  "1-amine-")
   , ( 31, "CH2-OH",   "hydroxymethyl")
-  , ( 32, "OO",       "double bond")
+  , ( 32, "N2",       "double bond")
   , ( 44, "C2H5O",    "1-hydroxyethyl")
   , ( 45, "C2H5O",    "2-hydroxyethyl")
   , ( 46, "SiO2",     "silicon dioxide")
