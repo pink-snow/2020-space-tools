@@ -18,6 +18,7 @@ import System.Environment (getArgs)
 import qualified Codec.Picture as P
 import qualified Codec.Picture.RGBA8 as P8
 import qualified Data.Vector.Mutable as V
+import qualified Data.Vector as Vi
 
 --------------------------------------------------------------------------------
 -- Types
@@ -26,7 +27,7 @@ type Scale = Int
 type Coord = (Int, Int)
 type Size = (Int, Int)
 
-data Img = Img (P.Image P.PixelRGBA8) Scale
+data Img = Img (Vi.Vector Bool) Size
 
 data Symbol
   = SymNumber Integer
@@ -67,20 +68,20 @@ groupAcc init f = groupAcc1'
 imgLoad :: FilePath -> IO Img
 imgLoad path = do
   img <- P8.readImageRGBA8 path
-  let scale = case map (\i -> imgPixelUnscaled img i i) [0..] of
-                True:False:_ -> 1
-                True:True:True:True:False:False:False:False:_ -> 4
-                _ -> error "Unexpected image scale"
-  return (Img img scale)
+  let size@(w, h) = (P.imageWidth img, P.imageHeight img)
+  let vec = Vi.generate (w*h) (\i -> imgPixelUnscaled img (mod i w) (div i w))
+  return $ Img vec size
 
 imgWidth :: Img -> Int
-imgWidth (Img img scale) = P.imageWidth img `div` scale
+imgWidth (Img _ (w, _)) = w
 
 imgHeight :: Img -> Int
-imgHeight (Img img scale) = P.imageHeight img `div` scale
+imgHeight (Img _ (_, h)) = h
 
 imgPixel :: Img -> Coord -> Bool
-imgPixel (Img img scale) (x, y) = imgPixelUnscaled img (x * scale) (y * scale)
+imgPixel (Img vec (w, h)) (x, y)
+  | x < 0 || y < 0 || x >= w || y >= h = False
+  | otherwise = vec Vi.! (x + y*w)
 
 imgPixelUnscaled :: (P.Image P.PixelRGBA8) -> Int -> Int -> Bool
 imgPixelUnscaled img x y = True
