@@ -177,7 +177,7 @@ symFloodFill img (sx, sy)
     put sx sy
     (x0, y0, x1, y1) <- readSTRef bounds
 
-    if max (x1 - x0 + 1) (y1 - y0 + 1) >= 6 || (x0 == x1 && y0 == y1)
+    if max (x1 - x0 + 1) (y1 - y0 + 1) >= 6 -- || (x0 == x1 && y0 == y1)
     then do
       vec' <- Vi.freeze vec
       return $ img { imgVec = vec' }
