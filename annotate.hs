@@ -1,25 +1,27 @@
-#! /usr/bin/env nix-shell
+#! /usr/bin/env nix-shellx
 -- Usage: ./annotate.hs in-msg.png out-annotated.svg out-decoded.txt
 #! nix-shell -i runhaskell -p
 #! nix-shell "haskellPackages.ghcWithPackages (pkgs: with pkgs; [JuicyPixels JuicyPixels-util errors extra groupBy])"
 #! nix-shell -I nixpkgs=https://github.com/NixOS/nixpkgs/archive/5cb5ccb54229efd9a4cd1fccc0f43e0bbed81c5d.tar.gz
 
+import Control.Applicative ((<|>))
 import Control.Arrow ((&&&))
 import Control.Error.Safe (justZ)
 import Control.Monad (forM, forM_, guard, when)
+import Control.Monad.Extra (allM, (||^))
 import Control.Monad.ST (runST)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Maybe (runMaybeT)
 import Data.List (foldl', intercalate, sortOn, find)
 import Data.List.GroupBy (groupBy)
 import Data.Maybe (catMaybes, fromMaybe)
+import Data.STRef
 import Data.Word (Word16)
 import System.Environment (getArgs)
-import Data.STRef
 import qualified Codec.Picture as P
 import qualified Codec.Picture.RGBA8 as P8
-import qualified Data.Vector.Mutable as V
 import qualified Data.Vector as Vi
+import qualified Data.Vector.Mutable as V
 
 --------------------------------------------------------------------------------
 -- Types
@@ -108,6 +110,87 @@ imgAllPixels :: Img -> [Coord]
 imgAllPixels img = range2d 0 0 (imgWidth img - 1) (imgHeight img - 1)
 
 --------------------------------------------------------------------------------
+-- Img manipulation
+
+imgRemoveGarbage :: Img -> Img
+imgRemoveGarbage img =
+  foldl imgFloodFill img (imgAllPixels img)
+
+imgFloodFill :: Img -> Coord -> Img
+imgFloodFill img (sx, sy)
+  | not $ imgPixel img (sx, sy) = img
+  | otherwise = runST $ do
+    vec <- Vi.thaw (imgVec img)
+    bounds <- newSTRef (sx, sy, sx, sy)
+    let
+      put x y
+        | x < 0 || y < 0 || x >= imgWidth img || y >= imgHeight img = return ()
+        | otherwise = do
+          v <- V.read vec (x + y * (imgWidth img))
+          when v $ do
+            V.write vec (x + y * (imgWidth img)) False
+            modifySTRef' bounds $ \(x0, y0, x1, y1) ->
+              (min x0 x, min y0 y, max x1 x, max y1 y)
+            put (x-1) (y-1); put (x  ) (y-1); put (x+1) (y-1)
+            put (x-1) (y  );                  put (x+1) (y  )
+            put (x-1) (y+1); put (x  ) (y+1); put (x+1) (y+1)
+    put sx sy
+    (x0, y0, x1, y1) <- readSTRef bounds
+
+    if max (x1 - x0 + 1) (y1 - y0 + 1) >= 5 || (x0 == x1 && y0 == y1)
+    then do
+      vec' <- Vi.freeze vec
+      return $ img { imgVec = vec' }
+    else
+      return $ img
+
+imgExtractElectrons :: Img -> (Img, [Coord])
+imgExtractElectrons img = runST $ do
+  vec <- Vi.thaw (imgVec img)
+  let idx x y
+       | x < 0 || y < 0 || x >= imgWidth img || y >= imgHeight img = Nothing
+       | otherwise = Just (x + y * (imgWidth img))
+  let px x y = case idx x y of
+         Nothing -> return False
+         Just idx -> V.read vec idx
+  let pxw x y = case idx x y of
+        Nothing -> return ()
+        Just idx -> V.write vec idx False
+  let
+    extractPattern (x, y) pattern = do
+      p <- allM (\((x', y'), val) -> (==val) <$> px (x + x') (y + y')) pattern
+      when p $ mapM_ (\((x', y'), _) -> pxw (x+x') (y+y')) pattern
+      return p
+  a <- fmap catMaybes $ forM (imgAllPixels img) $ \coord -> do
+    res <- extractPattern coord majorElectron ||^ extractPattern coord minorElectron
+    return $ if res then Just coord else Nothing
+  vec' <- Vi.freeze vec
+  return $ (img { imgVec = vec' }, a)
+
+majorElectron = parsePattern
+  [ "... "
+  , ".#.."
+  , "..#."
+  , " ..."
+  ]
+
+minorElectron = parsePattern
+  [ " ..."
+  , "..#."
+  , ".#.."
+  , "... "
+  ]
+
+parsePattern :: [String] -> [(Coord, Bool)]
+parsePattern = catMaybes . concat . zipWith line [0..]
+  where
+    chr y x '#' = Just ((x, y), True)
+    chr y x '.' = Just ((x, y), False)
+    chr _ _ _ = Nothing
+    line y = zipWith (chr y) [0..]
+    lines = catMaybes . concat . zipWith line [0..]
+
+--------------------------------------------------------------------------------
 -- Symbol decoder
 
 symDecode :: Img -> Coord -> Size -> Symbol
@@ -155,38 +238,6 @@ symDecode img (x, y) (w, h)
     varValue = bitsToInteger $ map (not . px) $ range2d 2 2 (size-2) (size-2)
 
     somethingValue = bitsToInteger $ map px $ range2d 0 0 (size-1) (size-1)
-
-symFloodFill :: Img -> Coord -> Img
-symFloodFill img (sx, sy)
-  | not $ imgPixel img (sx, sy) = img
-  | otherwise = runST $ do
-    vec <- Vi.thaw (imgVec img)
-    bounds <- newSTRef (sx, sy, sx, sy)
-    let
-      put x y
-        | x < 0 || y < 0 || x >= imgWidth img || y >= imgHeight img = return ()
-        | otherwise = do
-          v <- V.read vec (x + y * (imgWidth img))
-          when v $ do
-            V.write vec (x + y * (imgWidth img)) False
-            modifySTRef' bounds $ \(x0, y0, x1, y1) ->
-              (min x0 x, min y0 y, max x1 x, max y1 y)
-            put (x-1) (y-1); put (x  ) (y-1); put (x+1) (y-1)
-            put (x-1) (y  );                  put (x+1) (y  )
-            put (x-1) (y+1); put (x  ) (y+1); put (x+1) (y+1)
-    put sx sy
-    (x0, y0, x1, y1) <- readSTRef bounds
-
-    if max (x1 - x0 + 1) (y1 - y0 + 1) >= 6 -- || (x0 == x1 && y0 == y1)
-    then do
-      vec' <- Vi.freeze vec
-      return $ img { imgVec = vec' }
-    else
-      return $ img
-
-symRemoveGarbage :: Img -> Img
-symRemoveGarbage img =
-  foldl symFloodFill img (imgAllPixels img)
 
 symDetectAll :: Img -> [(Coord, Size)]
 symDetectAll img = runST $ do
@@ -314,9 +365,9 @@ svgAnnotation2 (x, y) (w, h) text1 text2 color = [
 annotateImg :: Img -> String
 annotateImg img = id
   $ svg img
-  $ map (symRepr' img')
+  $ map (symRepr' img)
   $ symDetectAll img'
-  where img' = symRemoveGarbage img
+  where img' = (fst . imgExtractElectrons) $ imgRemoveGarbage img
 
 decodeImg :: Img -> String
 decodeImg img = id
@@ -326,12 +377,12 @@ decodeImg img = id
     $ map (map (map (\(_, _, text, _) -> text)))
     $ map (groupBy (\a b -> xRight a >= xLeft b - 2)) -- split by horisontal groups
     $ splitByLines
-    $ map (symRepr' img')
+    $ map (symRepr' img)
     $ symDetectAll img'
   where
     xLeft ((x, _), _, _, _) = x
     xRight ((x, _), (w, _), _, _) = x + w
-    img' = symRemoveGarbage img
+    img' = (fst . imgExtractElectrons) $ imgRemoveGarbage img
 
 splitByLines :: [(Coord, Size, a, b)] -> [[(Coord, Size, a, b)]]
 splitByLines = id
@@ -439,7 +490,7 @@ aminoAcidIdentifiers =
   , {-06:06-} ( 44, "THR")  -- C2H5O    1-hydroxyethyl.
   , {-06:07-} ( 45, "a07")  -- C2H5O    2-hydroxyethyl.
   , {-06:08-} ( 58, "ASN")  -- C2H4NO   2-amino-2-oxoethyl.
-              
+
   , {-07:01-} ( 59, "ASP")  -- C2H3O2   carboxymethyl.
   , {-07:02-} ( 72, "GLN")  -- C3H6NO   3-amino-3-oxopropyl.
   , {-07:03-} (  9, "GLU")  -- C3H5O2   2-carboxyethyl.
