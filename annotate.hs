@@ -352,23 +352,10 @@ symRepr SymUnknown = ("?", "gray")
 symRepr (SymNumber val) = (text, "green")
   where
     text = fromMaybe (show val) $ lookup val elementIdentifiers
-symRepr (SymOperator val) = (text, "yellow")
-  where
-    text = fromMaybe (':' : show val) $ lookup val ops
-    ops = [ (0, "ap")
-          , (12, "=")
-          -- constants
-          , (2, "t")
-          , (8, "f")
-          -- binary operators
-          , (40, "div")
-          , (146, "mul")
-          , (365, "add")
-          , (401, "dec")
-          , (417, "inc")
-          , (448, "eq")
-          -- pflockingen
-          ] ++ map (\(a,b,c) -> (a, b ++ " " ++ c)) moleculeIdentifiers
+symRepr (SymOperator val) = fromMaybe (':' : show val, "yellow") $ lookup val $
+  map (\(a,b,c) -> (a, (b ++ " " ++ c, "yellow"))) moleculeIdentifiers
+  ++ map (\(a, b) -> (a, (b, "orange"))) aminoAcidIdentifiers
+
 symRepr (SymVariable val) = ('x' : show val, "blue")
 
 symRepr (SymSomething 341) = ("H-Bond", "red")
@@ -429,34 +416,37 @@ elementIdentifiers =
 
 moleculeIdentifiers =
   map (\(a, b, c) -> (a, tr ['0'..'9'] ['₀'..'₉'] b, c))
-  [ (  9, "C3H5O2",   "2-carboxyethyl")
-  , ( 16, "CH4",      "methane")
-  , ( 17, "NH3",      "ammonia")
-  , ( 18, "H2O",      "water")
-  , ( 20, "C2H6N",    "1-aminoethyl")
-  , ( 28, "N2",       "triple bond")
-  , ( 29, "CH2-CH3",  "ethyl")
-  , ( 30, "CH2-NH2",  "1-amine-")
-  , ( 31, "CH2-OH",   "hydroxymethyl")
-  , ( 32, "O2",       "double bond")
-  , ( 44, "C2H5O",    "1-hydroxyethyl")
-  , ( 45, "C2H5O",    "2-hydroxyethyl")
-  , ( 46, "SiO2",     "silicon dioxide")
-  , ( 48, "O3",       "ozone")
-  , ( 56, "C2H2NO",   "glycyl radical residue")
-  , ( 58, "C2H4NO",   "2-amino-2-oxoethyl")
-  , ( 59, "C2H3O2",   "carboxymethyl")
-  , ( 72, "C3H6NO",   "3-amino-3-oxopropyl")
-  , ( 74, "Al2O3",    "")
-  , ( 82, "AlO3",     "aluminium oxide")
-  , ( 84, "C4H9",     "isobutyl")
-  , ( 85, "NaNO3",    "sodium nitrate")
-  , ( 86, "C3H7N3",   "2-carbamimidamidoethyl")
-  , ( 87, "C4H7O2",   "butanoic acid")
-  , ( 95, "MgCl2",    "magnesium dichloride")
-  , (100, "C4H9N3",   "3-carbamimidamidopropyl")
-  , (104, "Fe2O3",    "ferric oxide")
-  , (118, "C7H7",     "benzyl group")
-  , (134, "C7H7O",    "4-hydroxybenzyl")
-  , (328, "FeO",      "ferrous oxide")
+  [ {-05:01-} ( 16, "CH4",     "methane")
+  , {-05:02-} ( 17, "NH3",     "ammonia")
+  , {-05:03-} ( 18, "H2O",     "water")
+  , {-05:04-} ( 28, "N2",      "triple bond")
+  , {-05:05-} ( 32, "O2",      "double bond")
+  , {-05:06-} ( 46, "SiO2",    "silicon dioxide")
+  , {-05:07-} ( 48, "O3",      "ozone")
+  , {-05:08-} (328, "FeO",     "ferrous oxide")
+  , {-05:09-} ( 74, "Al2O3",   "")
+  , {-05:10-} ( 85, "NaNO3",   "sodium nitrate")
+  , {-05:11-} ( 95, "MgCl2",   "magnesium dichloride")
+  , {-05:12-} (104, "Fe2O3",   "ferric oxide")
+  ]
+
+aminoAcidIdentifiers =
+  [ {-06:01-} ( 56, "a01")  -- C2H2NO   glycyl radical residue.
+  , {-06:02-} ( 20, "a02")  -- C2H6N    1-aminoethyl.
+  , {-06:03-} ( 29, "a03")  -- CH2-CH3  ethyl.
+  , {-06:04-} ( 30, "a04")  -- CH2-NH2  1-amine-.
+  , {-06:05-} ( 31, "SER")  -- CH2-OH   hydroxymethyl.
+  , {-06:06-} ( 44, "THR")  -- C2H5O    1-hydroxyethyl.
+  , {-06:07-} ( 45, "a07")  -- C2H5O    2-hydroxyethyl.
+  , {-06:08-} ( 58, "ASN")  -- C2H4NO   2-amino-2-oxoethyl.
+              
+  , {-07:01-} ( 59, "ASP")  -- C2H3O2   carboxymethyl.
+  , {-07:02-} ( 72, "GLN")  -- C3H6NO   3-amino-3-oxopropyl.
+  , {-07:03-} (  9, "GLU")  -- C3H5O2   2-carboxyethyl.
+  , {-07:04-} ( 84, "LEU")  -- C4H9     isobutyl.
+  , {-07:05-} ( 86, "a15")  -- C3H7N3   2-carbamimidamidoethyl.
+  , {-07:06-} ( 87, "a16")  -- C4H7O2   butanoic acid.
+  , {-07:07-} (100, "ARG")  -- C4H9N3   3-carbamimidamidopropyl.
+  , {-07:08-} (118, "PHE")  -- C7H7     benzyl group.
+  , {-07:09-} (134, "TYR")  -- C7H7O    4-hydroxybenzyl.
   ]
