@@ -11,5 +11,7 @@ mkShell {
     git
     wget
     unzip
+
+    zsh
   ];
 }

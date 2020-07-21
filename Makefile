@@ -1,11 +1,13 @@
 default: out/annotated out/annotated-pf
 
+all: out/annotated out/annotated-pf out/anim/anim.gif
+
 clean:
 	rm -rf out
 
 .DELETE_ON_ERROR:
 
-.PHONY: default clean out/annotated out/annotated-pf
+.PHONY: default clean out/annotated out/annotated-pf all
 
 out/annotated: out/annotated.done
 out/annotated-pf: out/annotated-pf.done
@@ -74,3 +76,12 @@ out/annotated-pf.done: out/pflockingen out/annotate-pf $(wildcard out/pflockinge
 	done
 	cd out/annotated-pf && ../../gen-index.sh > index.html
 	touch $@
+
+################################################################################
+# Animation
+################################################################################
+
+out/anim/anim.gif: decode-wav-anim.sh decode-wav-anim-frame.rs out/message-from-space
+	./decode-wav-anim.sh \
+		out/message-from-space/source/radio-transmission-recording.wav \
+		out/anim
