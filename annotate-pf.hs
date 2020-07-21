@@ -1,5 +1,5 @@
-#! /usr/bin/env nix-shellx
--- Usage: ./annotate.hs in-msg.png out-annotated.svg out-decoded.txt
+#! /usr/bin/env nix-shell
+-- Usage: ./annotate-pf.hs in-msg.png out-annotated.svg out-decoded.txt
 #! nix-shell -i runhaskell -p
 #! nix-shell "haskellPackages.ghcWithPackages (pkgs: with pkgs; [JuicyPixels JuicyPixels-util errors extra groupBy])"
 #! nix-shell -I nixpkgs=https://github.com/NixOS/nixpkgs/archive/5cb5ccb54229efd9a4cd1fccc0f43e0bbed81c5d.tar.gz
