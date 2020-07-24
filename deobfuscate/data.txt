@@ -1,0 +1,118 @@
+:1162
+  # :: Int -> Int -> (Int, Int)
+
+:1131
+  # concat
+
+:1488
+  # zipWithConcat :: [[a]] -> [[a]] -> [[a]]
+  : nil            nil
+  : (cons $a $b)   nil
+  : nil            (cons $a $b)
+  : (cons $a1 $b1) (cons $a2 $b2)
+  # : $a $b
+
+:1116
+  : nil          $c
+  : (cons $a $b) $c
+
+:1124
+  : nil          $c
+  : (cons $a $b) $c
+
+:1126
+  : nil          $c
+  : (cons $a $b) $c
+
+:1127
+  # mapWithCounter :: [a] -> ((a, Int) -> b) -> Int -> [b]
+  : nil          $f $cnt
+  : (cons $h $t) $f $cnt
+
+:1128
+  # n length
+  : nil         
+  : (cons $a $b)
+
+
+:1131
+  : nil          $c
+  : (cons $a $b) $c
+
+:1132
+  : nil          $c $d
+  : (cons $a $b) $c $d
+
+:1133
+  : nil          $c $d
+  : (cons $a $b) $c $d
+
+
+:1141
+  : nil          $c
+  : (cons $a $b) 0 
+  : (cons $a $b) $c
+
+:1142
+  : nil          $c
+  : (cons $a $b) 0 
+  : (cons $a $b) $c
+
+:1144
+  : nil          $c $d
+  : (cons $a $b) 0  $d
+  : (cons $a $b) $c $d
+
+:1152
+  : nil          $c
+  : (cons $a $b) $c
+
+:1153
+  : nil                       $p
+  : (cons $a  nil)            $p
+  : (cons $x0 (cons $x1 $xs)) $p
+
+:1220
+  : nil           $c
+  : (cons $a nil) $c
+
+:1221
+  : nil          $c $d
+  : (cons $a $b) $c $d
+
+:1222
+  : nil         
+  : (cons $a $b)
+
+:1268
+  : nil          $c $d $e
+  : (cons $a $b) $c $d $e
+
+:1269
+  : nil          $c
+  : (cons $a $b) $c
+
+# :1273  
+#   : $0 $1 $2 $3 $4 $5 -> isnil $3 (:1473 (:1274 $0 $2 $4 $5) (:1482 $0 (:1225 :1086))) (:1476 [:1274 $0 $2 $4 $5, :1482 $0 (:1225 :1086), :1482 (:1174 $0 9) (:1214 (:1141 $3 0)), :1482 (:1174 $0 16) (:1214 (:1141 $3 1)), :1482 (:1174 $0 23) (:1214 (:1141 $3 2)), :1482 (:1174 $0 30) (:1214 (:1141 $3 3))])
+
+:1342
+  : nil          $c $d $e
+  : (cons $a $b) $c $d $e
+
+:1403
+  : nil         
+  : (cons $a $b)
+
+:1418
+  : nil         
+  : (cons $a $b)
+
+:1453
+  : nil         
+  : (cons $a $b)
+
+# :1480
+#   : $0 $1 -> isnil $1 :1472 ($0 (λ$2 $3 -> :1473 [nil, [nil, :1197 $2 (-:1176 $1 + $3) (:1176 $1 + 5)]] [nil, [nil, :1183 $1 (:1162 ($2 + 3) (-:1176 $1 + $3))]]))
+# 
+# :1481
+#   : $0 $1 -> isnil $1 :1472 ($0 (λ$2 $3 -> :1473 [nil, [nil, :1197 $2 (-4 + $3) (:1176 $1 + 5)]] [nil, [nil, :1183 $1 (:1162 ($2 + 3) $3)]]))
