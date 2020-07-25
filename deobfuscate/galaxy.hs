@@ -275,25 +275,45 @@ f1113 a b = -- [4, a, b]
 f1114 a = -- [5, a]
   [VInt 5, a]
 
+-- f1115 cons for lists
+f1115 :: a -> [a] -> [a]
 f1115 = (:)
 
+-- f1116 safe car
 f1116 []    c = c
 f1116 (a:b) c = a
 
-f1117 a = eq 0 a 1 (2 * f1117 (-1 + a))
+-- f1117 power2
+f1117 :: Int -> Int
+f1117 0 = 1
+f1117 a = 2 * f1117 (-1 + a)
 
-f1118 a = lt a 2 0 (1 + f1118 (a / 2))
+-- f1118 binary integer logarithm
+f1118 :: Int -> Int
+f1118 a | a < 2     = 0
+        | otherwise = 1 + f1118 (a / 2)
 
-f1119 a b = lt a b 0 (1 + f1119 (a / b) b)
+-- f1119 integer logarithm
+f1119 :: Int -> Int -> Int
+f1119 x base | x < base     = 0
+             | otherwise = 1 + f1119 (x / base) base
 
-f1120 a =  lt 0 a (lt 0 a) (eq 0 a) a (-a)
+-- f1120 abs
+f1120 :: Int -> Int
+f1120 a | 0 <= a    = a
+        | otherwise = -a
 
-f1121 a b = lt a b b a
+-- f1121 max
+f1121 :: Int -> Int -> Int
+f1121 a b = if a < b then b else a
 
-f1122 a b = lt a b a b
+-- f1122 min
+f1122 :: Int -> Int -> Int
+f1122 a b = if a < b then a else b
 
-f1124 :: [Int] -> Int -> Bool
-f1124 []    c = False -- bug in deobfuscate
+-- f1124 contains
+f1124 :: Eq a => [a] -> a -> Bool
+f1124 []    c = False
 f1124 (a:b) c =
   if a == c
   then True
@@ -301,13 +321,15 @@ f1124 (a:b) c =
 
 -- f1125 map
 f1126 :: [a] -> (a -> b) -> [b]
-f1126 []    c = []
-f1126 (a:b) c = c a: f1126 b c
+f1126 []    fn = []
+f1126 (a:b) fn = fn a : f1126 b fn
 
+-- f1127 map with counter
 f1127 :: [a] -> (a -> Int -> b) -> Int -> [b]
-f1127 []    c d = []
-f1127 (a:b) c d = c a d: f1127 b c (d + 1)
+f1127 []    fn cnt = []
+f1127 (a:b) fn cnt = fn a cnt : f1127 b fn (cnt + 1)
 
+-- f1128 length
 f1128 :: [a] -> Int
 f1128 []    = 0
 f1128 (a:b) = 1 + f1128 b
@@ -317,42 +339,52 @@ f1131 :: [a] -> [a] -> [a]
 f1131 []    c = c
 f1131 (a:b) c = a : f1131 b c
 
+-- f1132 foldl
 f1132 :: [a] -> b -> (b -> a -> b) -> b
-f1132 []    c d = c
-f1132 (a:b) c d = f1132 b (d c a) d
+f1132 []    fn d = fn
+f1132 (a:b) fn d = f1132 b (d fn a) d
 
+-- f1133 foldr
 f1133 :: [a] -> b -> (b -> a -> b) -> b
-f1133 []    c d = c
-f1133 (a:b) c d = d (f1133 b c d) a
+f1133 []    fn d = fn
+f1133 (a:b) fn d = d (f1133 b fn d) a
 
+-- f1134 concat lists (with reverse)
+-- f1134 ["foo","bar","baz"] == "bazbarfoo"
 f1134 :: [[a]] -> [a]
 f1134 a = f1133 a [] f1131
-
-f1135' :: [a] -> (a -> [a] -> [a] -> [a]) -> [a]
-f1135' l pred = f1133 l [] (\c d -> pred d (d:c) c)
 
 -- f1135 filter
 f1135 :: [a] -> (a -> Bool) -> [a]
 f1135 l pred = f1133 l [] (\c d -> if pred d then d:c else c)
 
+f1135' :: [a] -> (a -> [a] -> [a] -> [a]) -> [a]
+f1135' l pred = f1133 l [] (\c d -> pred d (d:c) c)
+
 f1136 a b = f1126 (f1135' (f1127 a (,) 0) (\c -> b (fst c) (snd c))) fst
 
-f1137 a b = isnil (f1135 a b)
+-- f1137 any
+f1137 :: [a] -> (a -> Bool) -> Bool
+f1137 l pred = isnil (f1135 l pred)
 
+-- f1138 range [a-1 .. 0]
 f1138 :: Int -> [Int]
 f1138 a
-  | a < 0 = []
-  | a == 0 = []
+  | a <= 0 = []
   | otherwise = -1 + a : f1138 (-1 + a)
 
+-- f1139 range [0 .. a-1]
 f1139 :: Int -> [Int]
 f1139 a = f1126 (f1138 a) (\b -> -1 - b + a)
 
+-- f1141 nth element of a list
 f1141 :: [a] -> Int -> a
 f1141 []    _ = error "f1141" -- ???
 f1141 (a:b) 0 = a
 f1141 (a:b) c = f1141 b (-1 + c)
 
+-- f1142 nth element of a list or []
+f1142 :: [[a]] -> Int -> [a]
 f1142 []    _ = [] -- ???
 f1142 (a:b) 0 = a
 f1142 (a:b) c = f1142 b (-1 + c)
@@ -367,7 +399,7 @@ f1144 []    _ _ = error "f1144" -- False -- λ$0 $1 -> $1
 f1144 (a:b) 0 d = d: b
 f1144 (a:b) n d = a: f1144 b (-1 + n) d
 
--- maximum
+-- f1146 maximum
 f1146 :: [Int] -> Int
 f1146 (b:c) = f1132 c b (\d e -> lt d e e d)
 
@@ -376,24 +408,30 @@ f1147' (c:d) b = f1132 d c (\e f -> b e f f e)
 
 -- f1132 d c (\e f -> (if car e < cdr f then e else f) f e)
 
--- minimum
+-- f1149 minimum
 f1149 :: [Int] -> Int
 f1149 (a:b) = f1132 b a (\c d -> lt d c d c)
 
+-- f1150 quick-not-a-sort with key function
 f1150 :: Ord a => [t] -> (t -> a) -> [t]
 f1150 l f = f1152 l (\c d -> f c < f d)
 
+-- f1152 quick-not-a-sort with comparator function
+-- It produces extra elemens on each iteration hence it is "not-a-sort"
+-- (or maybe there is a bug in deobfuscate.hs)
 f1152 :: [a] -> (a -> a -> Bool) -> [a]
 f1152 []      _ = []
-f1152 (a:b) c =
+f1152 (a:b) cmp =
   f1131
   (f1131
-    (f1152 (f1135 b (\d -> c d a)) c)
+    (f1152 (f1135 b (\d -> cmp d a)) cmp)
     (f1135
       (a: b)
-      (\d -> c a d || c d a)))
-  (f1152 (f1135 b (\d -> c a d)) c)
+      (\d -> cmp a d || cmp d a))) -- for a quicksort, this should be replaced
+                                   -- with `\d -> (not (cmp a d || d a))`
+  (f1152 (f1135 b (\d -> cmp a d)) cmp)
 
+-- f1153 filter with window size of 2
 f1153 :: [a] -> (a -> a -> Bool) -> [a]
 f1153 []         _ = []
 f1153 (a:[])     _ = [a]
@@ -401,6 +439,7 @@ f1153 (x0:x1:xs) p
   | p x0 x1   = x0 : f1153 (x1:xs) p
   | otherwise =      f1153 (x1:xs) p
 
+-- f1155 sort with dedup
 f1155 :: Ord a => [a] -> [a]
 f1155 a = f1153 (f1152 a (<)) (<)
 
